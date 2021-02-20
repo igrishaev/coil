@@ -132,7 +132,7 @@
     (HttpRequest$BodyPublishers/noBody)
 
     :else
-    (throw (ex-info "wrong body" {}))))
+    (throw (ex-info "wrong body" {:body body}))))
 
 
 (defn set-method-&-publisher
@@ -141,9 +141,6 @@
 
   (let [publisher (make-body-publisher body)
         java-method (-> method name str/upper-case)]
-
-    (println java-method publisher)
-
     (.method builder java-method publisher)))
 
 
@@ -160,6 +157,10 @@
 
 (defn set-url [^HttpRequest$Builder builder url]
   (.uri builder (new URI url)))
+
+
+(defn build-request [^HttpRequest$Builder builder]
+  (.build builder))
 
 
 (defn ^HttpRequest
@@ -186,7 +187,7 @@
     ;; (.expectContinue expect-continue?)
 
     true
-    (.build)
+    build-request
 
 
     ))
@@ -220,7 +221,11 @@
 
     ;; charset
     :string
-    (HttpResponse$BodyHandlers/ofString)))
+    (HttpResponse$BodyHandlers/ofString)
+
+    ;; :none?
+    nil
+    (HttpResponse$BodyHandlers/discarding)))
 
 
 (def file? (partial instance? java.io.File))
@@ -244,6 +249,10 @@
   {:method :get
    :as :string})
 
+(defn ^java.util.function.Function as-function [f]
+  (reify java.util.function.Function
+    (apply [this arg] (f arg))))
+
 
 (defn request
   [opt]
@@ -251,8 +260,19 @@
   (let [opt* (merge opt-default opt)
         c (make-client opt*)
         req (make-request opt*)
-        handler (make-body-handler opt*)]
-    (->clj (.send c req handler))))
+        handler (make-body-handler opt*)
+
+        {:keys [async?]} opt*
+
+        ]
+
+    (if async?
+
+      (-> (.sendAsync c req handler)
+          (.thenApply (as-function ->clj)))
+
+      (-> (.send c req handler)
+          ->clj))))
 
 
 (defn -main
