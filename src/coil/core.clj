@@ -23,6 +23,7 @@
    [coil.auth :as a]
    [coil.util :as u]
    [coil.publishers :as pub]
+   [coil.handlers :as h]
 
    coil.edn
    coil.reader
@@ -76,6 +77,16 @@
     HttpClient$Version/HTTP_1_1
     :http-2
     HttpClient$Version/HTTP_2))
+
+
+(def opt-default
+  {:method :get
+   :as :stream
+   :redirect :normal
+   :version :http-1.1
+   ;;
+
+   })
 
 
 (defn ^HttpClient make-client
@@ -226,24 +237,24 @@
   (case as
 
     :bytes
-    (HttpResponse$BodyHandlers/ofByteArray)
+    (h/of-byte-array)
 
     :stream
-    (HttpResponse$BodyHandlers/ofInputStream)
+    (h/of-input-stream)
 
     :lines
-    (HttpResponse$BodyHandlers/ofLines)
+    (h/of-lines)
 
     :string
     (if response-charset
-      (HttpResponse$BodyHandlers/ofString response-charset)
-      (HttpResponse$BodyHandlers/ofString))
+      (h/of-string response-charset)
+      (h/of-string))
 
     (nil false :drop :none :skip :discard)
-    (HttpResponse$BodyHandlers/discarding)
+    (h/discarding)
 
     ;; else
-    (HttpResponse$BodyHandlers/ofInputStream)))
+    (h/of-input-stream)))
 
 
 (defn handle-exceptions
@@ -259,14 +270,7 @@
     response))
 
 
-(def opt-default
-  {:method :get
-   :as :stream
-   :redirect :normal
-   :version :http-1.1
-   ;;
 
-   })
 
 
 
@@ -284,8 +288,6 @@
 
 ;; ssl certs support
 ;; yaml support
-
-;; handlers ns
 
 
 ;; multi-project repo
