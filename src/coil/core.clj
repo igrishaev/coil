@@ -80,20 +80,23 @@
 
 (defn ^HttpClient make-client
 
-  [{:as opt
-    :keys [version
-           redirect]}]
+  [opt]
 
-  (cond-> (HttpClient/newBuilder)
+  (let [opt (merge opt-default opt)
 
-    redirect
-    (.followRedirects (->redirect redirect))
+        {:keys [version
+                redirect]} opt]
 
-    version
-    (.version (->version redirect))
+    (cond-> (HttpClient/newBuilder)
 
-    true
-    .build)
+      redirect
+      (.followRedirects (->redirect redirect))
+
+      version
+      (.version (->version version))
+
+      true
+      .build))
 
   ;;
   ;; connectTimeout
@@ -259,7 +262,7 @@
 (def opt-default
   {:method :get
    :as :stream
-   :redirect :always
+   :redirect :normal
    :version :http-1.1
    ;;
 
@@ -293,8 +296,7 @@
 
   ([opt]
 
-   (let [opt (merge opt-default opt)
-         client (make-client opt)]
+   (let [client (make-client opt)]
      (request client opt)))
 
   ([^HttpClient client opt]
