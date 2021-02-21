@@ -5,11 +5,9 @@
    java.net.http.HttpClient
    java.net.http.HttpClient$Redirect
    java.net.http.HttpClient$Version
-   java.net.http.HttpClient$Version
    java.net.http.HttpHeaders
    java.net.http.HttpRequest
    java.net.http.HttpRequest$BodyPublisher
-   java.net.http.HttpRequest$BodyPublishers
    java.net.http.HttpRequest$Builder
    java.net.http.HttpResponse
    java.net.http.HttpResponse$BodyHandler
@@ -108,13 +106,17 @@
 
 (defn ^java.net.http.HttpRequest$BodyPublisher
   make-body-publisher
-  [{:as opt :keys [body]}]
+  [{:as opt :keys [body
+                   body-range
+                   body-charset]}]
+
   (cond
 
-    ;; offset length
     (bytes? body)
-    (HttpRequest$BodyPublishers/ofByteArray body)
-
+    (if body-range
+      (let [[offset length] body-range]
+        (pub/of-byte-array body offset length))
+      (pub/of-byte-array body))
 
     (fn? body)
     (pub/fn->of-input-stream body)
@@ -122,12 +124,13 @@
     (u/input-stream? body)
     (pub/stream->of-input-stream body)
 
-    ;; charset
     (string? body)
-    (HttpRequest$BodyPublishers/ofString body)
+    (if body-charset
+      (pub/of-string body body-charset)
+      (pub/of-string body))
 
     (nil? body)
-    (HttpRequest$BodyPublishers/noBody)
+    (pub/no-body)
 
     :else
     (m/make-custom-body-publisher opt)))
@@ -279,15 +282,12 @@
 ;; ssl certs support
 ;; yaml support
 
-;; publishers ns
 ;; handlers ns
 
 
 ;; multi-project repo
 ;; readme
 
-
-{:basic-auth ["sdfds" "sdfsdf"]}
 
 (defn request
 
