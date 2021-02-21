@@ -21,7 +21,7 @@
             "application/edn"))
 
 
-;; handle edn options
+;; check content type
 (defmethod m/handle-as :edn
   [response
    {:keys [edn-read-params]}]

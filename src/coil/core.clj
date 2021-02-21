@@ -21,7 +21,10 @@
    java.time.Duration)
   (:require
    [coil.mults :as m]
+   [coil.query :as q]
+   [coil.auth :as a]
    [coil.util :as u]
+   [coil.publishers :as pub]
 
    coil.edn
    coil.reader
@@ -112,9 +115,12 @@
     (bytes? body)
     (HttpRequest$BodyPublishers/ofByteArray body)
 
+
+    (fn? body)
+    (pub/fn->of-input-stream body)
+
     (u/input-stream? body)
-    (HttpRequest$BodyPublishers/ofInputStream
-     (u/->supplier body))
+    (pub/stream->of-input-stream body)
 
     ;; charset
     (string? body)
@@ -154,8 +160,14 @@
   (.expectContinue builder expect-flag))
 
 
-(defn set-url [^HttpRequest$Builder builder url]
-  (.uri builder (new URI url)))
+(defn set-url
+  [^HttpRequest$Builder builder
+   {:keys [url query-params]}]
+  (let [url
+        (cond-> url
+          query-params
+          (str "?" (q/make-query-string query-params)))]
+    (.uri builder (new URI url))))
 
 
 (defn build-request
@@ -169,8 +181,11 @@
   (assert (:url opt) "URL not set")
   (assert (:method opt) "HTTP method not set")
 
-  (let [opt (-> opt
-                m/handle-content-type)
+  (let [{:keys [basic-auth]} opt
+
+        opt (-> opt
+                m/handle-content-type
+                a/handle-basic-auth)
 
         {:keys [url
                 timeout
@@ -179,50 +194,50 @@
 
         builder
         (-> (HttpRequest/newBuilder)
-            (set-url url)
+            (set-url opt)
             (set-method-&-publisher opt))]
 
-    (build-request
-     (cond-> builder
+    (cond-> builder
 
-       headers
-       (set-headers headers)
+      headers
+      (set-headers headers)
 
-       timeout
-       (set-timeout timeout)
+      timeout
+      (set-timeout timeout)
 
-       expect-continue?
-       (set-expect-continue expect-continue?)))))
+      expect-continue?
+      (set-expect-continue expect-continue?)
+
+      true
+      build-request)))
 
 
 (defn ^HttpResponse$BodyHandlers
   make-body-handler
   [{:keys [as
-           skip-response-body]}]
+           response-charset]}]
 
-  (if skip-response-body
+  (case as
+
+    :bytes
+    (HttpResponse$BodyHandlers/ofByteArray)
+
+    :stream
+    (HttpResponse$BodyHandlers/ofInputStream)
+
+    :lines
+    (HttpResponse$BodyHandlers/ofLines)
+
+    :string
+    (if response-charset
+      (HttpResponse$BodyHandlers/ofString response-charset)
+      (HttpResponse$BodyHandlers/ofString))
+
+    (nil false :drop :none :skip :discard)
     (HttpResponse$BodyHandlers/discarding)
 
-    (case as
-
-      :bytes
-      (HttpResponse$BodyHandlers/ofByteArray)
-
-      :stream
-      (HttpResponse$BodyHandlers/ofInputStream)
-
-      :lines
-      (HttpResponse$BodyHandlers/ofLines)
-
-      ;; charset
-      :string
-      (HttpResponse$BodyHandlers/ofString)
-
-      (nil :none :skip :discard)
-      (HttpResponse$BodyHandlers/discarding)
-
-      ;; else
-      (HttpResponse$BodyHandlers/ofInputStream))))
+    ;; else
+    (HttpResponse$BodyHandlers/ofInputStream)))
 
 
 (defn handle-exceptions
@@ -242,9 +257,13 @@
   {:method :get
    :as :stream
    :redirect :always
+   :version :http-1.1
    ;;
 
    })
+
+
+
 
 
 ;; http://catalog.data.gov/api/3/sdfsf
@@ -257,14 +276,18 @@
 (defn parse-headers [])
 
 
-;; query string params
-;; post params
-;; basic auth
 ;; ssl certs support
 ;; yaml support
 
+;; publishers ns
+;; handlers ns
+
+
 ;; multi-project repo
 ;; readme
+
+
+{:basic-auth ["sdfds" "sdfsdf"]}
 
 (defn request
 
