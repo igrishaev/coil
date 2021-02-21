@@ -1,39 +1,33 @@
 (ns coil.core
   (:import
-   java.net.http.HttpClient
-   java.net.http.HttpClient$Version
-
-   java.net.http.HttpClient$Redirect
-   java.net.http.HttpClient$Version
-
-   java.net.http.HttpRequest
-   java.net.http.HttpRequest$Builder
-   java.net.http.HttpRequest$BodyPublisher
-   java.net.http.HttpRequest$BodyPublishers
-
-   java.net.http.HttpResponse
-   java.net.http.HttpResponse$BodyHandlers
-
-
-   java.net.http.HttpHeaders
-
-   java.time.Duration
-
-   java.io.File
-   java.io.InputStream
-
-   java.util.function.Supplier
-
-   java.nio.file.Paths
-
    java.net.URI
 
+   java.net.http.HttpClient
+   java.net.http.HttpClient$Redirect
+   java.net.http.HttpClient$Version
+   java.net.http.HttpClient$Version
+   java.net.http.HttpHeaders
+   java.net.http.HttpRequest
+   java.net.http.HttpRequest$BodyPublisher
+   java.net.http.HttpRequest$BodyPublishers
+   java.net.http.HttpRequest$Builder
+   java.net.http.HttpResponse
+   java.net.http.HttpResponse$BodyHandler
+   java.net.http.HttpResponse$BodyHandlers
+   java.net.http.HttpResponse$BodySubscribers
+   java.net.http.HttpResponse$BodySubscribers
+   java.net.http.HttpResponse$ResponseInfo
 
-
-   )
+   java.time.Duration)
   (:require
-   [clojure.string :as str])
-  (:gen-class))
+   [coil.mults :as m]
+   [coil.util :as u]
+
+   coil.edn
+   coil.reader
+   coil.json
+
+   [clojure.string :as str]))
 
 
 (defprotocol IClojure
@@ -64,6 +58,7 @@
       "HTTP_1_1" :http-1.1
       "HTTP_2"   :http-2)))
 
+
 (defn ->redirect [kword]
   (case kword
     :always
@@ -72,6 +67,7 @@
     HttpClient$Redirect/NEVER
     :normal
     HttpClient$Redirect/NORMAL))
+
 
 (defn ->version [kword]
   (case kword
@@ -98,31 +94,27 @@
     true
     .build)
 
-
-
-
-  ;; version
   ;;
   ;; connectTimeout
   ;; proxy
   ;; authenticator
   ;;
+
   )
 
 
 (defn ^java.net.http.HttpRequest$BodyPublisher
-  make-body-publisher [body]
+  make-body-publisher
+  [{:as opt :keys [body]}]
   (cond
 
     ;; offset length
     (bytes? body)
     (HttpRequest$BodyPublishers/ofByteArray body)
 
-    ;; (file? body)
-    ;; (HttpRequest$BodyPublishers/ofFile body) ;; wrap file
-
-    (in-stream? body)
-    (HttpRequest$BodyPublishers/ofInputStream (->supplier body))
+    (u/input-stream? body)
+    (HttpRequest$BodyPublishers/ofInputStream
+     (u/->supplier body))
 
     ;; charset
     (string? body)
@@ -132,14 +124,15 @@
     (HttpRequest$BodyPublishers/noBody)
 
     :else
-    (throw (ex-info "wrong body" {:body body}))))
+    (m/make-custom-body-publisher opt)))
 
 
-(defn set-method-&-publisher
+(defn ^HttpRequest$Builder
+  set-method-&-publisher
   [^HttpRequest$Builder builder
-   {:keys [method body]}]
+   {:as opt :keys [method]}]
 
-  (let [publisher (make-body-publisher body)
+  (let [publisher (make-body-publisher opt)
         java-method (-> method name str/upper-case)]
     (.method builder java-method publisher)))
 
@@ -147,7 +140,8 @@
 (defn set-headers
   [^HttpRequest$Builder builder headers]
   (doseq [[header value] headers]
-    (.header builder (name header) (str value))))
+    (.header builder (name header) (str value)))
+  builder)
 
 
 (defn set-timeout
@@ -155,127 +149,150 @@
   (.timeout builder (java.time.Duration/ofMillis timeout)))
 
 
+(defn set-expect-continue
+  [^HttpRequest$Builder builder expect-flag]
+  (.expectContinue builder expect-flag))
+
+
 (defn set-url [^HttpRequest$Builder builder url]
   (.uri builder (new URI url)))
 
 
-(defn build-request [^HttpRequest$Builder builder]
+(defn build-request
+  [^HttpRequest$Builder builder]
   (.build builder))
 
 
 (defn ^HttpRequest
+  make-request [opt]
 
-  make-request
+  (assert (:url opt) "URL not set")
+  (assert (:method opt) "HTTP method not set")
 
-  [{:as opt
-    :keys [url
-           expect-continue?
-           headers
-           timeout]}]
+  (let [opt (-> opt
+                m/handle-content-type)
 
-  (cond-> (-> (HttpRequest/newBuilder)
-              (set-url url)
-              (set-method-&-publisher opt))
+        {:keys [url
+                timeout
+                headers
+                expect-continue?]} opt
 
-    headers
-    (set-headers headers)
+        builder
+        (-> (HttpRequest/newBuilder)
+            (set-url url)
+            (set-method-&-publisher opt))]
 
-    timeout
-    (set-timeout timeout)
+    (build-request
+     (cond-> builder
 
-    ;; expect-continue?
-    ;; (.expectContinue expect-continue?)
+       headers
+       (set-headers headers)
 
-    true
-    build-request
+       timeout
+       (set-timeout timeout)
 
-
-    ))
+       expect-continue?
+       (set-expect-continue expect-continue?)))))
 
 
 (defn ^HttpResponse$BodyHandlers
   make-body-handler
-  [{:keys [as]}]
+  [{:keys [as
+           skip-response-body]}]
 
-  (case as
+  (if skip-response-body
+    (HttpResponse$BodyHandlers/discarding)
 
-    :bytes
-    (HttpResponse$BodyHandlers/ofByteArray)
+    (case as
 
-    ;; path,
-    ;; open-option...
-    ;; https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/nio/file/StandardOpenOption.html
-    ;; :file
-    ;; (HttpResponse$BodyHandlers/ofFile "aaa")
+      :bytes
+      (HttpResponse$BodyHandlers/ofByteArray)
 
+      :stream
+      (HttpResponse$BodyHandlers/ofInputStream)
 
-    ;; ofFileDownload
-    ;; open-option...
-    ;; (HttpResponse$BodyHandlers/ofFile path)
+      :lines
+      (HttpResponse$BodyHandlers/ofLines)
 
-    :stream
-    (HttpResponse$BodyHandlers/ofInputStream)
+      ;; charset
+      :string
+      (HttpResponse$BodyHandlers/ofString)
 
-    :lines
-    (HttpResponse$BodyHandlers/ofLines)
+      (nil :none :skip :discard)
+      (HttpResponse$BodyHandlers/discarding)
 
-    ;; charset
-    :string
-    (HttpResponse$BodyHandlers/ofString)
-
-    ;; :none?
-    nil
-    (HttpResponse$BodyHandlers/discarding)))
+      ;; else
+      (HttpResponse$BodyHandlers/ofInputStream))))
 
 
-(def file? (partial instance? java.io.File))
+(defn handle-exceptions
+  [{:as response :keys [status]}
+   {:keys [throw-exceptions]}]
 
-(def in-stream? (partial instance? InputStream))
+  (if (and throw-exceptions
+           (not (u/positive-status? status)))
 
+    (throw (ex-info "Error"
+                    (assoc response :type ::bad-status)))
 
-(defn ->path [path]
-  (Paths/get path))
-
-
-(defn ^Supplier ->supplier [val]
-  (reify Supplier
-    (get [this]
-      val)))
-
-
+    response))
 
 
 (def opt-default
   {:method :get
-   :as :string})
+   :as :stream
+   :redirect :always
+   ;;
 
-(defn ^java.util.function.Function as-function [f]
-  (reify java.util.function.Function
-    (apply [this arg] (f arg))))
+   })
 
+
+;; http://catalog.data.gov/api/3/sdfsf
+;; cors
+;; content-type
+;; content-length
+;; date
+;; other date headers (cache)
+;; cookies?
+(defn parse-headers [])
+
+
+;; query string params
+;; post params
+;; basic auth
+;; ssl certs support
+;; yaml support
+
+;; multi-project repo
+;; readme
 
 (defn request
-  [opt]
 
-  (let [opt* (merge opt-default opt)
-        c (make-client opt*)
-        req (make-request opt*)
-        handler (make-body-handler opt*)
+  ([opt]
 
-        {:keys [async?]} opt*
+   (let [opt (merge opt-default opt)
+         client (make-client opt)]
+     (request client opt)))
 
-        ]
+  ([^HttpClient client opt]
 
-    (if async?
+   (let [opt (merge opt-default opt)
+         req (make-request opt)
+         handler (make-body-handler opt)
 
-      (-> (.sendAsync c req handler)
-          (.thenApply (as-function ->clj)))
+         {:keys [async?]} opt
 
-      (-> (.send c req handler)
-          ->clj))))
+         post-fn
+         (fn [response]
+           (-> response
+               ->clj
+               (m/handle-as opt)
+               (handle-exceptions opt)))]
 
+     (if async?
 
-(defn -main
-  "I don't do a whole lot ... yet."
-  [& args]
-  (println "Hello, World!"))
+       (-> (.sendAsync client req handler)
+           (.thenApply (u/->function post-fn)))
+
+       (-> (.send client req handler)
+           post-fn)))))
