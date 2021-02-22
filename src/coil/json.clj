@@ -1,9 +1,8 @@
 (ns coil.json
-  (:import
-   java.net.http.HttpRequest$BodyPublishers)
   (:require
    [coil.mults :as m]
    [coil.util :as u]
+   [coil.publishers :as pub]
 
    [clojure.java.io :as io]
    [clojure.data.json :as json]))
@@ -21,7 +20,7 @@
   [{:keys [body
            json-write-params]}]
 
-  (HttpRequest$BodyPublishers/ofString
+  (pub/of-string
    (apply json/write-str
           body
           (u/map->seq
@@ -38,18 +37,18 @@
 
 
 (defn resp-json? [response]
-  (some->> response
-           :headers
-           :content-type
-           (re-find #"(?i)/json")
-           some?))
+  (u/content-type-matches?
+   response
+   #"(?i)application/json"))
 
 
 (defmethod m/handle-as :json
   [response
    {:keys [json-read-params]}]
 
-  (if (resp-json? response)
+  (if-not (resp-json? response)
+    response
+
     (update response :body
             (fn [stream]
               (apply json/read
@@ -57,6 +56,4 @@
                      (u/map->seq
                       (merge
                        read-defaults
-                       json-read-params)))))
-
-    response))
+                       json-read-params)))))))

@@ -59,3 +59,11 @@
 (def file? (partial instance? java.io.File))
 
 (def input-stream? (partial instance? InputStream))
+
+
+(defn content-type-matches? [response re]
+  (some->> response
+           :headers
+           :content-type
+           (re-find re)
+           some?))

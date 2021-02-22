@@ -28,6 +28,7 @@
    coil.edn
    coil.reader
    coil.json
+   coil.xml
 
    [clojure.string :as str]))
 
@@ -270,12 +271,6 @@
     response))
 
 
-
-
-
-
-
-
 ;; http://catalog.data.gov/api/3/sdfsf
 ;; cors
 ;; content-type
@@ -287,8 +282,14 @@
 
 
 ;; ssl certs support
-;; yaml support
 
+;; yaml support
+;; msgpack support
+;; transient
+
+;; file upload
+;; file download
+;; file dir download
 
 ;; multi-project repo
 ;; readme
