@@ -3,8 +3,8 @@
    java.net.URI
 
    java.net.http.HttpClient
-   java.net.http.HttpClient$Redirect
    java.net.http.HttpClient$Version
+
    java.net.http.HttpHeaders
    java.net.http.HttpRequest
    java.net.http.HttpRequest$BodyPublisher
@@ -24,6 +24,7 @@
    [coil.util :as u]
    [coil.publishers :as pub]
    [coil.handlers :as h]
+   [coil.client :as c]
 
    coil.edn
    coil.reader
@@ -62,24 +63,6 @@
       "HTTP_2"   :http-2)))
 
 
-(defn ->redirect [kword]
-  (case kword
-    :always
-    HttpClient$Redirect/ALWAYS
-    :never
-    HttpClient$Redirect/NEVER
-    :normal
-    HttpClient$Redirect/NORMAL))
-
-
-(defn ->version [kword]
-  (case kword
-    :http-1.1
-    HttpClient$Version/HTTP_1_1
-    :http-2
-    HttpClient$Version/HTTP_2))
-
-
 (def opt-default
   {:method :get
    :as :stream
@@ -89,34 +72,6 @@
 
    })
 
-
-(defn ^HttpClient make-client
-
-  [opt]
-
-  (let [opt (merge opt-default opt)
-
-        {:keys [version
-                redirect]} opt]
-
-    (cond-> (HttpClient/newBuilder)
-
-      redirect
-      (.followRedirects (->redirect redirect))
-
-      version
-      (.version (->version version))
-
-      true
-      .build))
-
-  ;;
-  ;; connectTimeout
-  ;; proxy
-  ;; authenticator
-  ;;
-
-  )
 
 
 (defn ^java.net.http.HttpRequest$BodyPublisher
@@ -281,6 +236,10 @@
 (defn parse-headers [])
 
 
+;; decompress gzip deflate
+;; user creds from url
+;; multipart
+
 ;; ssl certs support
 
 ;; yaml support
@@ -299,7 +258,7 @@
 
   ([opt]
 
-   (let [client (make-client opt)]
+   (let [client (c/make-client opt)]
      (request client opt)))
 
   ([^HttpClient client opt]
